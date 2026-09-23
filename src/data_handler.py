@@ -26,11 +26,10 @@ class DataHandler:
 
         start_time = pd.to_datetime(time_interval[0]) if time_interval else None
         end_time = pd.to_datetime(time_interval[1]) if time_interval else None
+        data_dir = Path(data_directory)
 
         dataframes = []
-
-        self.data_dir = Path(data_directory)
-        for hour_folder in self.data_dir.iterdir():
+        for hour_folder in data_dir.iterdir():
 
         # Verify that the folder is a directory
             if not hour_folder.is_dir():
@@ -52,3 +51,5 @@ class DataHandler:
             for csv_file in hour_folder.glob("*.csv"):
                 df = pd.read_csv(csv_file)
                 dataframes.append(df)
+        
+        # Combine data frames, creating a new one if self.data is None, otherwise appending to the existing one
