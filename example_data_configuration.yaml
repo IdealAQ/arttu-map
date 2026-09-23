@@ -1,0 +1,11 @@
+sensor1_variable1: # Key for the variable in this config file
+  key: "sensor1_variable1_unit1" # Set the key that the variable is stored under in the data files
+  unit: "unit1" # Set units
+  display_name: "Sensor 1 Variable 1 display name" # Set the name displayed in the dropdown menu and the legend
+  display: true # Select if displayed in dropdown menu
+
+sensor2_variable2: # Key for the variable in this config file
+  key: "sensor2_variable2_unit2" # Set the key that the variable is stored under in the data files
+  unit: "unit2" # Set units
+  display_name: "Sensor 2 Variable 2 display name" # Set the name displayed in the dropdown menu and the legend
+  display: false # Select if displayed in dropdown menu 
