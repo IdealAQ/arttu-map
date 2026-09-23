@@ -11,3 +11,6 @@ wheels/
 
 # Testing data
 testing_data/
+
+# Configuration files
+data_configuration.yaml
