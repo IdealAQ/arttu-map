@@ -1,6 +1,9 @@
 import pandas as pd
 from pathlib import Path
 import warnings
+from pyproj import Geod
+
+geod = Geod(ellps="WGS84")  # Initialize a Geod object for distance calculations
 
 
 
@@ -64,9 +67,11 @@ class DataHandler:
         else:
             self.data = pd.concat([self.data, combined_df], ignore_index=True)
 
-        # If data config is provided, remove rows with missing latitude or longitude using the keys in the config
+        # If data config is provided and has the relevant keys, remove rows with missing latitude or longitude using the keys in the config
         if self.config is not None:
-            self.remove_missing_lat_lon()
+            if self.config.get("latitude") is not None and self.config.get("longitude") is not None:
+                if self.config["latitude"].get("key") is not None and self.config["longitude"].get("key") is not None:
+                    self.remove_missing_lat_lon()
             
         
     def remove_missing_lat_lon(self):
@@ -84,3 +89,35 @@ class DataHandler:
             raise KeyError(f"Missing key in configuration for latitude/longitude: {e}")
         except TypeError as e: # If self.data is not a DataFrame or is None
             raise TypeError(f"Data is not a DataFrame or is None: {e}")
+        
+    def radius_filter(self, center_lat: float, center_lon: float, radius_km: float):
+        """
+        Filter the data to include only rows within a specified radius from a given latitude and longitude.
+        
+        :param center_lat: Latitude of the center point.
+        :param center_lon: Longitude of the center point.
+        :param radius_km: Radius in kilometers.
+        """
+        
+        # Check if data is loaded and the relevant data keys are available in the config
+        if self.data is None:
+            warnings.warn("Data is not loaded. Radius filter could not be applied.")
+            return
+        if self.config is None:
+            warnings.warn("Configuration is not provided. Radius filter could not be applied.")
+            return
+        try:
+            latitude_key = self.config["data"]["latitude_key"]
+            longitude_key = self.config["data"]["longitude_key"]
+        except KeyError as e: # If the keys are not found in the config
+            raise KeyError(f"Missing key in configuration for latitude/longitude: {e}")
+            return
+        
+        c_lon = center_lon
+        c_lat = center_lat
+        r = radius_km * 1000  # Convert radius to meters
+        
+        _, _, distances = geod.inv(c_lon, c_lat, self.data[longitude_key].values, self.data[latitude_key].values)
+        
+        # Filter the data based on the calculated distances
+        self.data = self.data[distances <= r].copy()
