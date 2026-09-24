@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+import warnings
 
 
 
@@ -28,6 +29,7 @@ class DataHandler:
         end_time = pd.to_datetime(time_interval[1]) if time_interval else None
         data_dir = Path(data_directory)
 
+        # Iterate through each hour folder in the data directory and load any found CSV files
         dataframes = []
         for hour_folder in data_dir.iterdir():
 
@@ -53,3 +55,32 @@ class DataHandler:
                 dataframes.append(df)
         
         # Combine data frames, creating a new one if self.data is None, otherwise appending to the existing one
+        combined_df = pd.concat(dataframes, ignore_index=True)
+        if combined_df.empty: # If no data files were found in the specified directory and time interval, issue a warning and return
+            warnings.warn(f"No data files found in the specified directory and time interval: {data_directory}, {time_interval}")
+            return
+        if self.data is None:
+            self.data = combined_df
+        else:
+            self.data = pd.concat([self.data, combined_df], ignore_index=True)
+
+        # If data config is provided, remove rows with missing latitude or longitude using the keys in the config
+        if self.config is not None:
+            self.remove_missing_lat_lon()
+            
+        
+    def remove_missing_lat_lon(self):
+        """
+        Remove rows with missing latitude or longitude.
+        """
+        
+        # Remove rows with missing latitude or longitude
+        try:
+            latitude_key = self.config["data"]["latitude_key"]
+            longitude_key = self.config["data"]["longitude_key"]
+            self.data.dropna(subset=[latitude_key, longitude_key], inplace=True)
+
+        except KeyError as e: # If the keys are not found in the config
+            raise KeyError(f"Missing key in configuration for latitude/longitude: {e}")
+        except TypeError as e: # If self.data is not a DataFrame or is None
+            raise TypeError(f"Data is not a DataFrame or is None: {e}")
