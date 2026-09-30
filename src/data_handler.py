@@ -83,12 +83,35 @@ class DataHandler:
                 if self.config["latitude"].get("key") is not None and self.config["longitude"].get("key") is not None:
                     self.remove_missing_lat_lon()
         
+        self.remove_unknown_columns()  # Remove columns that are not specified in the configuration
         self.duplicate_bfill()  # Fill missing values in primary columns using duplicate columns, if present
+        self.convert_to_numeric()  # Convert all columns that are not configured as non-numeric to numeric, coercing errors to NaN
     
+    def remove_unknown_columns(self):
+        """
+        Remove columns from the data that are not specified in the configuration.
+        """
+        if self.data is None:
+            warnings.warn("Data is not loaded. Unknown columns could not be removed.")
+            return
+        known_columns = set(self.config_by_data_key.keys())
+        unknown_columns = [col for col in self.data.columns if col not in known_columns]
+        
+        # Remove duplicates of known columns with suffixes of the from _# from the unknown columns list
+        for col in unknown_columns:
+            if re.search(r"_\d+$", col):
+                primary_col = re.sub(r"_\d+$", "", col)
+                if primary_col in known_columns:
+                    unknown_columns.remove(col)
+        
+        # Drop the unknown columns from the data
+        self.data.drop(columns=unknown_columns, inplace=True)
+                    
     def duplicate_bfill(self):
         """
         Fill missing values in the primary columns by using values in duplicate columns, if present.
         Uses the value in the first duplicate column found with an actual value.
+        Removes redundant duplicate columns after filling the primary column.
         """
         if self.data is None:
             warnings.warn("Data is not loaded. Bfill could not be applied.")
@@ -101,7 +124,10 @@ class DataHandler:
             
             # If there are duplicates, fill missing values in the primary column with the first valid value from a duplicate
             if not duplicates.empty:
-                self.data[col] = self.data[col].combine_first(duplicates.bfill(axis=1).iloc[:, 0])   
+                self.data[col] = self.data[col].combine_first(duplicates.bfill(axis=1).iloc[:, 0])
+
+            # Remove duplicate columns after filling the primary column
+            self.data.drop(columns=duplicates.columns, inplace=True)
                 
     def convert_to_numeric(self, columns: list = None):
         """
@@ -118,12 +144,15 @@ class DataHandler:
         
         for col in columns:
             if col in self.data.columns:
-                if col in self.config_by_data_key:
-                    variable_config = self.config_by_data_key[col]
+                # Check if the column is configured a duplicate
+                if re.search(r"_\d+$", col):
+                    lookup_col = re.sub(r"_\d+$", "", col)  # Remove the suffix to find the primary column in the config
+                else:
+                    lookup_col = col
+                if lookup_col in self.config_by_data_key:
+                    variable_config = self.config_by_data_key[lookup_col]
                     if variable_config.get("numeric") != False:  # Only convert if the column is not explicitly marked as non-numeric
                         self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
-                    else:
-                        warnings.warn(f"Column '{col}' is configured as non-numeric. Conversion skipped for this column.")
                 else:
                     warnings.warn(f"Column '{col}' not found in configuration. Conversion skipped for this column.")
             else:
