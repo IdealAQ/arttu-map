@@ -86,7 +86,19 @@ class DataHandler:
         self.remove_unknown_columns()  # Remove columns that are not specified in the configuration
         self.duplicate_bfill()  # Fill missing values in primary columns using duplicate columns, if present
         self.convert_to_numeric()  # Convert all columns that are not configured as non-numeric to numeric, coercing errors to NaN
-    
+
+    def save_data(self, output_file_path: str):
+        """
+        Save the loaded data to a parquet file.
+        
+        :param output_file_path: Path to the output parquet file.
+        """
+        if self.data is not None:
+            self.data.to_parquet(output_file_path, index=False)
+        else:
+            warnings.warn("Data is not loaded. Nothing to save.")
+        pass
+   
     def remove_unknown_columns(self):
         """
         Remove columns from the data that are not specified in the configuration.
