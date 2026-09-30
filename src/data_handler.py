@@ -2,6 +2,7 @@ import pandas as pd
 from pathlib import Path
 import warnings
 from pyproj import Geod
+import re
 
 geod = Geod(ellps="WGS84")  # Initialize a Geod object for distance calculations
 
@@ -72,6 +73,27 @@ class DataHandler:
             if self.config.get("latitude") is not None and self.config.get("longitude") is not None:
                 if self.config["latitude"].get("key") is not None and self.config["longitude"].get("key") is not None:
                     self.remove_missing_lat_lon()
+        
+        self.duplicate_bfill()  # Fill missing values in primary columns using duplicate columns, if present
+    
+    def duplicate_bfill(self):
+        """
+        Fill missing values in the primary columns by using values in duplicate columns, if present.
+        Uses the value in the first duplicate column found with an actual value.
+        """
+        if self.data is None:
+            warnings.warn("Data is not loaded. Bfill could not be applied.")
+            return
+        primary_columns = [col for col in self.data.columns if not re.search(r"_\d+$", col)] # Collect columns without suffixes like _1, _2, etc.
+        for col in primary_columns:
+            
+            # Find duplicates
+            duplicates = self.data.filter(regex=f"^{re.escape(col)}_\d+$")
+            
+            # If there are duplicates, fill missing values in the primary column with the first valid value from a duplicate
+            if not duplicates.empty:
+                self.data[col] = self.data[col].combine_first(duplicates.bfill(axis=1).iloc[:, 0])
+            
             
         
     def remove_missing_lat_lon(self):
