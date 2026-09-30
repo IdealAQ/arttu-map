@@ -19,6 +19,9 @@ class DataHandler:
     def __init__(self, config: dict):
         self.config = config
         self.data = None
+        
+        # Create a mapping of data keys to their configurations for quick lookup
+        self.config_by_data_key = {variable_config["key"]: variable_config for variable_config in self.config.values()}
 
     def load_data(self, data_directory: str, time_interval: tuple = None):
         """
@@ -36,8 +39,8 @@ class DataHandler:
         # Iterate through each hour folder in the data directory and load any found CSV files
         dataframes = []
         for hour_folder in data_dir.iterdir():
-
-        # Verify that the folder is a directory
+            
+            # Verify that the folder is a valid directory
             if not hour_folder.is_dir():
                 continue
 
@@ -53,9 +56,15 @@ class DataHandler:
                 if folder_end_time < start_time or folder_start_time > end_time:
                     continue
             
+            # List all non-numeric columns in the data configuration
+            non_numeric_columns = [key for key, value in self.config_by_data_key.items() if value.get("numeric") == False]
+            
+            # Create dictionary to specify data types for non-numeric columns as string
+            dtype_dict = {col: str for col in non_numeric_columns}
+            
             # Load all CSV files in the hour folder
             for csv_file in hour_folder.glob("*.csv"):
-                df = pd.read_csv(csv_file)
+                df = pd.read_csv(csv_file, dtype=dtype_dict)
                 dataframes.append(df)
         
         # Combine data frames, creating a new one if self.data is None, otherwise appending to the existing one
@@ -88,13 +97,37 @@ class DataHandler:
         for col in primary_columns:
             
             # Find duplicates
-            duplicates = self.data.filter(regex=f"^{re.escape(col)}_\d+$")
+            duplicates = self.data.filter(regex=rf"^{re.escape(col)}_\d+$")
             
             # If there are duplicates, fill missing values in the primary column with the first valid value from a duplicate
             if not duplicates.empty:
-                self.data[col] = self.data[col].combine_first(duplicates.bfill(axis=1).iloc[:, 0])
-            
-            
+                self.data[col] = self.data[col].combine_first(duplicates.bfill(axis=1).iloc[:, 0])   
+                
+    def convert_to_numeric(self, columns: list = None):
+        """
+        Convert specified columns to numeric, coercing errors to NaN.
+        If no columns are specified, convert all columns to numeric.
+        
+        :param columns: List of column names to convert. If None, all columns will be converted.
+        """
+        if self.data is None:
+            warnings.warn("Data is not loaded. Conversion could not be applied.")
+            return
+        if columns is None:
+            columns = self.data.columns.tolist()
+        
+        for col in columns:
+            if col in self.data.columns:
+                if col in self.config_by_data_key:
+                    variable_config = self.config_by_data_key[col]
+                    if variable_config.get("numeric") != False:  # Only convert if the column is not explicitly marked as non-numeric
+                        self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
+                    else:
+                        warnings.warn(f"Column '{col}' is configured as non-numeric. Conversion skipped for this column.")
+                else:
+                    warnings.warn(f"Column '{col}' not found in configuration. Conversion skipped for this column.")
+            else:
+                warnings.warn(f"Column '{col}' not found in data. Conversion skipped for this column.")
         
     def remove_missing_lat_lon(self):
         """
@@ -103,14 +136,14 @@ class DataHandler:
         
         # Remove rows with missing latitude or longitude
         try:
-            latitude_key = self.config["data"]["latitude_key"]
-            longitude_key = self.config["data"]["longitude_key"]
-            self.data.dropna(subset=[latitude_key, longitude_key], inplace=True)
-
+            latitude_key = self.config["latitude"]["key"]
+            longitude_key = self.config["longitude"]["key"]
         except KeyError as e: # If the keys are not found in the config
             raise KeyError(f"Missing key in configuration for latitude/longitude: {e}")
         except TypeError as e: # If self.data is not a DataFrame or is None
             raise TypeError(f"Data is not a DataFrame or is None: {e}")
+        
+        self.data.dropna(subset=[latitude_key, longitude_key], inplace=True)
         
     def radius_filter(self, center_lat: float, center_lon: float, radius_km: float):
         """
@@ -129,11 +162,10 @@ class DataHandler:
             warnings.warn("Configuration is not provided. Radius filter could not be applied.")
             return
         try:
-            latitude_key = self.config["data"]["latitude_key"]
-            longitude_key = self.config["data"]["longitude_key"]
+            latitude_key = self.config["latitude"]["key"]
+            longitude_key = self.config["longitude"]["key"]
         except KeyError as e: # If the keys are not found in the config
             raise KeyError(f"Missing key in configuration for latitude/longitude: {e}")
-            return
         
         c_lon = center_lon
         c_lat = center_lat
